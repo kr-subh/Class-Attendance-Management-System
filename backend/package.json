@@ -1,0 +1,32 @@
+{
+  "name": "attendance-system-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Class Attendance Management System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test:stage1": "node test/test-stage1.js",
+    "test:stage2": "node test/test-stage2.js",
+    "test:stage3": "node test/test-stage3.js",
+    "test": "node test/test-stage1.js && node test/test-stage2.js && node test/test-stage3.js",
+    "seed": "node seed.js"
+  },
+  "keywords": [
+    "attendance",
+    "express",
+    "mongoose",
+    "jwt",
+    "mern"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.7.2"
+  }
+}
