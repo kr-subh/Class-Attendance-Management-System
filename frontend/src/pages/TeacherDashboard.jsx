@@ -2,9 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 
 export default function TeacherDashboard() {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
 
-  // Assigned subjects
   const [subjects, setSubjects] = useState([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -13,11 +12,9 @@ export default function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState("marker");
 
   // Attendance Marking State
-  const [attendanceDate, setAttendanceDate] = useState(() => {
-    return new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-  });
+  const [attendanceDate, setAttendanceDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [attendanceSlot, setAttendanceSlot] = useState(1);
-  const [studentStatuses, setStudentStatuses] = useState({}); // { [studentId]: 'present' | 'absent' }
+  const [studentStatuses, setStudentStatuses] = useState({});
   const [isEditingExisting, setIsEditingExisting] = useState(false);
   const [savingAttendance, setSavingAttendance] = useState(false);
 
@@ -26,118 +23,107 @@ export default function TeacherDashboard() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [filterShortageOnly, setFilterShortageOnly] = useState(false);
 
-  // Alert State
+  // Alerts
   const [alert, setAlert] = useState({ type: "", message: "" });
 
-  const authFetch = (url, options = {}) => {
-    return fetch(url, {
+  const authFetch = (url, options = {}) =>
+    fetch(url, {
       ...options,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        ...(options.headers || {})
+        ...options.headers
       }
     });
-  };
 
-  // Load teacher's assigned subjects
-  const loadSubjects = async () => {
-    try {
-      setLoading(true);
-      const res = await authFetch("/api/subjects");
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        setSubjects(data.subjects);
-        if (data.subjects.length > 0 && !selectedSubjectId) {
-          setSelectedSubjectId(data.subjects[0]._id);
-        }
-      } else {
-        setAlert({ type: "error", message: data.message || "Failed to load assigned subjects." });
-      }
-    } catch (err) {
-      setAlert({ type: "error", message: "Network error loading subjects." });
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Load teacher's assigned subjects on mount
   useEffect(() => {
+    async function loadSubjects() {
+      try {
+        setLoading(true);
+        const res = await authFetch("/api/subjects");
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          setSubjects(data.subjects);
+          if (data.subjects.length > 0) {
+            setSelectedSubjectId(data.subjects[0]._id);
+          }
+        } else {
+          setAlert({ type: "error", message: data.message || "Failed to load assigned subjects." });
+        }
+      } catch {
+        setAlert({ type: "error", message: "Network error loading subjects." });
+      } finally {
+        setLoading(false);
+      }
+    }
     loadSubjects();
   }, []);
 
-  // Current selected subject object
   const currentSubject = subjects.find((s) => s._id === selectedSubjectId);
 
-  // Load or prefill attendance roster for the selected subject, date, and slot
-  const loadRosterForSession = async () => {
-    if (!selectedSubjectId || !attendanceDate) return;
-
-    try {
-      const res = await authFetch(
-        `/api/attendance/subject/${selectedSubjectId}?date=${attendanceDate}&slot=${attendanceSlot}`
-      );
-      const data = await res.json();
-
-      const existingRecordMap = {};
-      if (res.ok && data.records && data.records.length > 0) {
-        setIsEditingExisting(true);
-        data.records.forEach((rec) => {
-          const sId = rec.student?._id || rec.student;
-          existingRecordMap[sId] = rec.status;
-        });
-      } else {
-        setIsEditingExisting(false);
-      }
-
-      // Initialize status for every enrolled student
-      if (currentSubject && currentSubject.students) {
-        const initialMap = {};
-        currentSubject.students.forEach((st) => {
-          initialMap[st._id] = existingRecordMap[st._id] || "present"; // Default to present if new session
-        });
-        setStudentStatuses(initialMap);
-      }
-    } catch (err) {
-      console.error("Failed to load session attendance records:", err);
-    }
-  };
-
-  // Whenever subject, date, or slot changes, load the session roster
+  // Load session attendance roster
   useEffect(() => {
-    if (activeTab === "marker") {
-      loadRosterForSession();
-    }
-  }, [selectedSubjectId, attendanceDate, attendanceSlot, activeTab]);
+    if (!selectedSubjectId || !attendanceDate || activeTab !== "marker") return;
 
-  // Load Subject Summary
-  const loadSubjectSummary = async () => {
-    if (!selectedSubjectId) return;
+    async function loadRoster() {
+      try {
+        const res = await authFetch(
+          `/api/attendance/subject/${selectedSubjectId}?date=${attendanceDate}&slot=${attendanceSlot}`
+        );
+        const data = await res.json();
 
-    try {
-      setSummaryLoading(true);
-      const res = await authFetch(`/api/attendance/summary/subject/${selectedSubjectId}`);
-      const data = await res.json();
+        const existingMap = {};
+        if (res.ok && data.records && data.records.length > 0) {
+          setIsEditingExisting(true);
+          data.records.forEach((rec) => {
+            const sId = rec.student?._id || rec.student;
+            existingMap[sId] = rec.status;
+          });
+        } else {
+          setIsEditingExisting(false);
+        }
 
-      if (res.ok && data.success) {
-        setSummaryData(data);
-      } else {
-        setAlert({ type: "error", message: data.message || "Failed to load summary." });
+        if (currentSubject && currentSubject.students) {
+          const initialMap = {};
+          currentSubject.students.forEach((st) => {
+            initialMap[st._id] = existingMap[st._id] || "present";
+          });
+          setStudentStatuses(initialMap);
+        }
+      } catch (err) {
+        console.error("Failed to load session roster:", err);
       }
-    } catch (err) {
-      setAlert({ type: "error", message: "Error loading attendance summary." });
-    } finally {
-      setSummaryLoading(false);
     }
-  };
+    loadRoster();
+  }, [selectedSubjectId, attendanceDate, attendanceSlot, activeTab, currentSubject]);
 
+  // Load subject summary
   useEffect(() => {
-    if (activeTab === "summary") {
-      loadSubjectSummary();
+    if (!selectedSubjectId || activeTab !== "summary") return;
+
+    async function loadSummary() {
+      try {
+        setSummaryLoading(true);
+        const res = await authFetch(`/api/attendance/summary/subject/${selectedSubjectId}`);
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          setSummaryData(data);
+        } else {
+          setAlert({ type: "error", message: data.message || "Failed to load summary." });
+        }
+      } catch {
+        setAlert({ type: "error", message: "Error loading attendance summary." });
+      } finally {
+        setSummaryLoading(false);
+      }
     }
+    loadSummary();
   }, [selectedSubjectId, activeTab]);
 
-  // Toggle status for a student
+  // Toggle present/absent for a student
   const handleToggleStatus = (studentId) => {
     setStudentStatuses((prev) => ({
       ...prev,
@@ -145,20 +131,20 @@ export default function TeacherDashboard() {
     }));
   };
 
-  // Mark all present
+  // Mark all students present or absent
   const handleMarkAll = (status) => {
     if (!currentSubject) return;
-    const newMap = {};
-    currentSubject.students.forEach((s) => {
-      newMap[s._id] = status;
+    const updated = {};
+    currentSubject.students.forEach((st) => {
+      updated[st._id] = status;
     });
-    setStudentStatuses(newMap);
+    setStudentStatuses(updated);
   };
 
-  // Save Attendance to Backend
+  // Save or edit attendance
   const handleSaveAttendance = async () => {
     if (!currentSubject || !currentSubject.students || currentSubject.students.length === 0) {
-      setAlert({ type: "error", message: "No enrolled students to mark attendance for." });
+      setAlert({ type: "error", message: "No students enrolled in this course to mark attendance." });
       return;
     }
 
@@ -192,7 +178,7 @@ export default function TeacherDashboard() {
       } else {
         setAlert({ type: "error", message: data.message || "Failed to save attendance." });
       }
-    } catch (err) {
+    } catch {
       setAlert({ type: "error", message: "Network error saving attendance." });
     } finally {
       setSavingAttendance(false);
@@ -203,7 +189,7 @@ export default function TeacherDashboard() {
     return (
       <div className="loading-screen">
         <div className="spinner"></div>
-        <p>Loading Faculty Portal...</p>
+        <p>Loading Teacher Portal...</p>
       </div>
     );
   }
@@ -213,10 +199,10 @@ export default function TeacherDashboard() {
       {/* Top Banner */}
       <div className="dashboard-header-card card">
         <div className="header-badge-row">
-          <span className="role-badge role-teacher">Faculty Portal</span>
+          <span className="role-badge role-teacher">Faculty Dashboard</span>
         </div>
         <h2>Attendance Management</h2>
-        <p>Welcome, {user?.name}. Mark, edit, and monitor class attendance records.</p>
+        <p>Record daily class attendance, edit existing records, and monitor students below 75%.</p>
       </div>
 
       {alert.message && (
@@ -227,153 +213,147 @@ export default function TeacherDashboard() {
 
       {subjects.length === 0 ? (
         <div className="card text-center">
-          <h3>No Assigned Subjects</h3>
+          <h3>No Subjects Assigned</h3>
           <p className="text-muted" style={{ marginTop: "8px" }}>
-            You do not have any subjects assigned to you yet. Please contact an Administrator.
+            You do not currently have any assigned subjects. Please contact the Administrator.
           </p>
         </div>
       ) : (
-        <>
-          {/* Controls Bar: Select Subject & Tabs */}
-          <div className="card" style={{ marginBottom: "20px" }}>
-            <div className="teacher-controls-bar">
-              <div className="subject-selector-group">
-                <label htmlFor="subjectSelect">Current Subject:</label>
+        <div>
+          {/* Controls Bar: Subject, Date, Slot & Tabs */}
+          <div className="teacher-controls-card card">
+            <div className="controls-grid">
+              <div className="form-group">
+                <label htmlFor="teacherSubject">Select Subject</label>
                 <select
-                  id="subjectSelect"
+                  id="teacherSubject"
                   value={selectedSubjectId}
                   onChange={(e) => setSelectedSubjectId(e.target.value)}
                   className="form-select"
                 >
                   {subjects.map((sub) => (
                     <option key={sub._id} value={sub._id}>
-                      {sub.name} ({sub.code}) - {sub.students?.length || 0} Students
+                      {sub.code} - {sub.name} ({sub.students?.length || 0} students)
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Sub-tabs */}
-              <div className="tab-buttons">
-                <button
-                  type="button"
-                  className={`tab-btn ${activeTab === "marker" ? "active" : ""}`}
-                  onClick={() => setActiveTab("marker")}
-                >
-                  📝 Mark / Edit Attendance
-                </button>
-                <button
-                  type="button"
-                  className={`tab-btn ${activeTab === "summary" ? "active" : ""}`}
-                  onClick={() => setActiveTab("summary")}
-                >
-                  📊 Subject Summary & Shortage
-                </button>
-              </div>
+              {activeTab === "marker" && (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="attendanceDate">Attendance Date</label>
+                    <input
+                      id="attendanceDate"
+                      type="date"
+                      value={attendanceDate}
+                      onChange={(e) => setAttendanceDate(e.target.value)}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="attendanceSlot">Class Slot</label>
+                    <select
+                      id="attendanceSlot"
+                      value={attendanceSlot}
+                      onChange={(e) => setAttendanceSlot(Number(e.target.value))}
+                      className="form-select"
+                    >
+                      <option value={1}>Slot 1 (Regular Lecture)</option>
+                      <option value={2}>Slot 2 (Consecutive Lecture)</option>
+                      <option value={3}>Slot 3 (Extra Class)</option>
+                    </select>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="tab-buttons-row">
+              <button
+                type="button"
+                onClick={() => setActiveTab("marker")}
+                className={`tab-btn ${activeTab === "marker" ? "tab-active" : ""}`}
+              >
+                📋 Mark Attendance {isEditingExisting && <span className="chip-edit">Editing Existing</span>}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("summary")}
+                className={`tab-btn ${activeTab === "summary" ? "tab-active" : ""}`}
+              >
+                📊 Subject Summary & Shortage Alert
+              </button>
             </div>
           </div>
 
-          {/* TAB 1: MARK / EDIT ATTENDANCE */}
+          {/* TAB 1: ATTENDANCE MARKER */}
           {activeTab === "marker" && (
             <div className="card">
-              <div className="session-config-bar">
-                <div className="form-group">
-                  <label htmlFor="sessionDate">Class Date</label>
-                  <input
-                    id="sessionDate"
-                    type="date"
-                    value={attendanceDate}
-                    onChange={(e) => setAttendanceDate(e.target.value)}
-                    className="form-select"
-                  />
+              <div className="roster-header-bar">
+                <div>
+                  <h3>Class Roster ({currentSubject?.students?.length || 0} Students)</h3>
+                  <p className="card-subtitle">
+                    Session: <strong>{attendanceDate}</strong> | <strong>Slot {attendanceSlot}</strong>
+                    {isEditingExisting && (
+                      <span className="notice-badge">Existing Session Loaded (Editing In-Place)</span>
+                    )}
+                  </p>
                 </div>
 
-                <div className="form-group">
-                  <label htmlFor="sessionSlot">Class Slot (Consecutive Classes)</label>
-                  <select
-                    id="sessionSlot"
-                    value={attendanceSlot}
-                    onChange={(e) => setAttendanceSlot(Number(e.target.value))}
-                    className="form-select"
-                  >
-                    <option value={1}>Slot 1 (Regular Lecture)</option>
-                    <option value={2}>Slot 2 (Consecutive Lecture / Lab Block)</option>
-                    <option value={3}>Slot 3 (Extra Class / Tutorial)</option>
-                  </select>
-                </div>
-
-                <div className="status-notice-chip">
-                  {isEditingExisting ? (
-                    <span className="badge-editing">⚠️ Editing Existing Attendance</span>
-                  ) : (
-                    <span className="badge-new">✨ New Attendance Session</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Quick Actions Bar */}
-              <div className="roster-action-bar">
-                <div className="quick-buttons">
-                  <button
-                    type="button"
-                    onClick={() => handleMarkAll("present")}
-                    className="btn-quick btn-quick-present"
-                  >
-                    ✓ Mark All Present
+                <div className="quick-actions-row">
+                  <button type="button" onClick={() => handleMarkAll("present")} className="btn-secondary">
+                    All Present
+                  </button>
+                  <button type="button" onClick={() => handleMarkAll("absent")} className="btn-secondary">
+                    All Absent
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleMarkAll("absent")}
-                    className="btn-quick btn-quick-absent"
+                    onClick={handleSaveAttendance}
+                    disabled={savingAttendance || !currentSubject?.students?.length}
+                    className="btn-primary"
                   >
-                    ✕ Mark All Absent
+                    {savingAttendance ? "Saving..." : isEditingExisting ? "Update Attendance" : "Submit Attendance"}
                   </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleSaveAttendance}
-                  className="btn-primary"
-                  style={{ width: "auto", padding: "8px 24px" }}
-                  disabled={savingAttendance || !currentSubject?.students?.length}
-                >
-                  {savingAttendance ? "Saving..." : isEditingExisting ? "Update Attendance" : "Save Attendance"}
-                </button>
               </div>
 
-              {/* Enrolled Students Roster */}
               {!currentSubject?.students || currentSubject.students.length === 0 ? (
-                <div className="empty-state">
-                  No students are enrolled in this subject yet. An Administrator must enroll students first.
-                </div>
+                <div className="empty-state">No students enrolled in this course yet.</div>
               ) : (
                 <div className="table-responsive">
-                  <table className="custom-table roster-table">
+                  <table className="custom-table">
                     <thead>
                       <tr>
-                        <th>#</th>
                         <th>Roll No</th>
                         <th>Student Name</th>
                         <th>Email</th>
-                        <th style={{ textAlign: "center" }}>Attendance Status</th>
+                        <th>Status</th>
+                        <th>Toggle Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {currentSubject.students.map((st, idx) => {
-                        const status = studentStatuses[st._id] || "present";
+                      {currentSubject.students.map((st) => {
+                        const isPresent = studentStatuses[st._id] === "present";
                         return (
-                          <tr key={st._id}>
-                            <td>{idx + 1}</td>
-                            <td><strong>{st.rollNo || "N/A"}</strong></td>
+                          <tr key={st._id} className={isPresent ? "row-present" : "row-absent"}>
+                            <td><strong>{st.rollNo || "-"}</strong></td>
                             <td>{st.name}</td>
                             <td>{st.email}</td>
-                            <td style={{ textAlign: "center" }}>
+                            <td>
+                              <span className={`status-pill ${isPresent ? "pill-present" : "pill-absent"}`}>
+                                {isPresent ? "🟢 Present" : "🔴 Absent"}
+                              </span>
+                            </td>
+                            <td>
                               <button
                                 type="button"
                                 onClick={() => handleToggleStatus(st._id)}
-                                className={`attendance-toggle-btn ${status === "present" ? "is-present" : "is-absent"}`}
+                                className={`btn-toggle ${isPresent ? "toggle-absent" : "toggle-present"}`}
                               >
-                                {status === "present" ? "🟢 Present" : "🔴 Absent"}
+                                Mark {isPresent ? "Absent" : "Present"}
                               </button>
                             </td>
                           </tr>
@@ -386,13 +366,13 @@ export default function TeacherDashboard() {
             </div>
           )}
 
-          {/* TAB 2: SUBJECT SUMMARY & SHORTAGE REPORT */}
+          {/* TAB 2: SUBJECT SUMMARY & SHORTAGE */}
           {activeTab === "summary" && (
             <div className="card">
               {summaryLoading || !summaryData ? (
                 <div className="loading-screen" style={{ height: "30vh" }}>
                   <div className="spinner"></div>
-                  <p>Calculating attendance percentages & shortage statistics...</p>
+                  <p>Calculating attendance statistics...</p>
                 </div>
               ) : (
                 <div>
@@ -448,26 +428,21 @@ export default function TeacherDashboard() {
                                   <small className="text-muted">{s.student.email}</small>
                                 </td>
                                 <td>
-                                  <strong>{s.attendedClasses}</strong> / {s.totalClasses}
+                                  <strong>{s.attendedClasses}</strong> / {s.totalClasses} Classes
                                 </td>
                                 <td>
-                                  <div className="percentage-cell">
-                                    <span
-                                      className={`pct-badge ${s.isShortage ? "pct-bad" : "pct-good"}`}
-                                    >
-                                      {s.percentage}%
-                                    </span>
-                                  </div>
+                                  <span className={`pct-chip ${s.isShortage ? "pct-bad" : "pct-good"}`}>
+                                    {s.percentage}%
+                                  </span>
                                 </td>
                                 <td>
                                   {s.isShortage ? (
-                                    <div className="shortage-info-badge">
-                                      ⚠️ Shortage: Must attend <strong>{s.classesNeededTo75}</strong> consecutive classes to reach 75%
+                                    <div className="shortage-notice">
+                                      <span>⚠️ Shortage (&lt;75%)</span>
+                                      <small>Must attend next <strong>{s.classesNeededTo75}</strong> consecutive class(es)</small>
                                     </div>
                                   ) : (
-                                    <span className="good-standing-badge">
-                                      ✅ In Good Standing
-                                    </span>
+                                    <span className="good-standing">✅ Good Standing</span>
                                   )}
                                 </td>
                               </tr>
@@ -480,7 +455,7 @@ export default function TeacherDashboard() {
               )}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

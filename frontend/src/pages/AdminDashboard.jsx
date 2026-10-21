@@ -4,15 +4,12 @@ import { useAuth } from "../context/AuthContext";
 export default function AdminDashboard() {
   const { token, user } = useAuth();
 
-  // Stats & Data State
   const [stats, setStats] = useState({ studentCount: 0, teacherCount: 0, subjectCount: 0 });
   const [subjects, setSubjects] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-
-  // Alerts
   const [alert, setAlert] = useState({ type: "", message: "" });
 
   // Form State: Create Subject
@@ -20,47 +17,46 @@ export default function AdminDashboard() {
   const [code, setCode] = useState("");
   const [selectedTeacher, setSelectedTeacher] = useState("");
 
-  // Edit Subject Modal State
+  // Edit Modal State
   const [editingSubject, setEditingSubject] = useState(null);
   const [editName, setEditName] = useState("");
   const [editTeacher, setEditTeacher] = useState("");
 
-  // Enrollment Modal State
+  // Roster Modal State
   const [activeEnrollSubject, setActiveEnrollSubject] = useState(null);
   const [selectedStudentToEnroll, setSelectedStudentToEnroll] = useState("");
 
   // Helper for authenticated requests
-  const authFetch = (url, options = {}) => {
-    return fetch(url, {
+  const authFetch = (url, options = {}) =>
+    fetch(url, {
       ...options,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        ...(options.headers || {})
+        ...options.headers
       }
     });
-  };
 
-  // Fetch all initial data
+  // Fetch all initial dashboard data
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [statsRes, subjectsRes, teachersRes, studentsRes] = await Promise.all([
+      const [statsRes, subsRes, teachersRes, studentsRes] = await Promise.all([
         authFetch("/api/auth/stats"),
         authFetch("/api/subjects"),
         authFetch("/api/auth/users?role=teacher"),
         authFetch("/api/auth/users?role=student")
       ]);
 
-      const [statsData, subjectsData, teachersData, studentsData] = await Promise.all([
+      const [statsData, subsData, teachersData, studentsData] = await Promise.all([
         statsRes.json(),
-        subjectsRes.json(),
+        subsRes.json(),
         teachersRes.json(),
         studentsRes.json()
       ]);
 
       if (statsData.success) setStats(statsData.stats);
-      if (subjectsData.success) setSubjects(subjectsData.subjects);
+      if (subsData.success) setSubjects(subsData.subjects);
       if (teachersData.success) {
         setTeachers(teachersData.users);
         if (teachersData.users.length > 0) setSelectedTeacher(teachersData.users[0]._id);
@@ -69,7 +65,7 @@ export default function AdminDashboard() {
         setStudents(studentsData.users);
         if (studentsData.users.length > 0) setSelectedStudentToEnroll(studentsData.users[0]._id);
       }
-    } catch (err) {
+    } catch {
       setAlert({ type: "error", message: "Failed to load dashboard data." });
     } finally {
       setLoading(false);
@@ -86,7 +82,7 @@ export default function AdminDashboard() {
     setAlert({ type: "", message: "" });
 
     if (!name.trim() || !code.trim() || !selectedTeacher) {
-      setAlert({ type: "error", message: "Please provide subject name, course code, and assigned teacher." });
+      setAlert({ type: "error", message: "Please provide subject title, course code, and assigned teacher." });
       return;
     }
 
@@ -106,14 +102,14 @@ export default function AdminDashboard() {
       } else {
         setAlert({ type: "error", message: data.message || "Failed to create subject." });
       }
-    } catch (err) {
+    } catch {
       setAlert({ type: "error", message: "Network error creating subject." });
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Edit Subject
+  // Update Subject
   const handleUpdateSubject = async (e) => {
     e.preventDefault();
     if (!editingSubject) return;
@@ -133,7 +129,7 @@ export default function AdminDashboard() {
       } else {
         setAlert({ type: "error", message: data.message || "Failed to update subject." });
       }
-    } catch (err) {
+    } catch {
       setAlert({ type: "error", message: "Error updating subject." });
     } finally {
       setActionLoading(false);
@@ -157,7 +153,7 @@ export default function AdminDashboard() {
       } else {
         setAlert({ type: "error", message: data.message || "Failed to delete subject." });
       }
-    } catch (err) {
+    } catch {
       setAlert({ type: "error", message: "Error deleting subject." });
     } finally {
       setActionLoading(false);
@@ -184,7 +180,7 @@ export default function AdminDashboard() {
       } else {
         setAlert({ type: "error", message: data.message || "Failed to enroll student." });
       }
-    } catch (err) {
+    } catch {
       setAlert({ type: "error", message: "Error enrolling student." });
     } finally {
       setActionLoading(false);
@@ -210,7 +206,7 @@ export default function AdminDashboard() {
       } else {
         setAlert({ type: "error", message: data.message || "Failed to unenroll student." });
       }
-    } catch (err) {
+    } catch {
       setAlert({ type: "error", message: "Error unenrolling student." });
     } finally {
       setActionLoading(false);
@@ -358,9 +354,7 @@ export default function AdminDashboard() {
                       <td>
                         <div className="table-actions">
                           <button
-                            onClick={() => {
-                              setActiveEnrollSubject(sub);
-                            }}
+                            onClick={() => setActiveEnrollSubject(sub)}
                             className="btn-action btn-manage"
                             title="Manage Student Roster"
                           >
@@ -475,7 +469,7 @@ export default function AdminDashboard() {
               </button>
             </form>
 
-            {/* Currently Enrolled Students List */}
+            {/* Enrolled Students Table */}
             <div className="enrolled-students-list">
               {activeEnrollSubject.students?.length === 0 ? (
                 <div className="empty-state">No students enrolled yet. Select a student above to enroll them.</div>

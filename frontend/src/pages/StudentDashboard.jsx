@@ -31,7 +31,7 @@ export default function StudentDashboard() {
       } else {
         setAlert({ type: "error", message: data.message || "Failed to load attendance report." });
       }
-    } catch (err) {
+    } catch {
       setAlert({ type: "error", message: "Network error loading attendance history." });
     } finally {
       setLoading(false);

@@ -29,15 +29,7 @@ export default function Login() {
     setSubmitting(false);
 
     if (result.success) {
-      // Role-based redirect
-      const role = result.user.role;
-      if (role === "admin") {
-        navigate("/admin");
-      } else if (role === "teacher") {
-        navigate("/teacher");
-      } else {
-        navigate("/student");
-      }
+      navigate(`/${result.user.role}`);
     } else {
       setError(result.message || "Invalid email or password.");
     }
